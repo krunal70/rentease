@@ -107,21 +107,21 @@ export default function RegisterPage() {
         setIsLoading(true);
 
         try {
-            const success = await register(
+            const result = await register(
                 formData.name,
                 formData.email,
                 formData.password,
                 formData.role as UserRole
             );
 
-            if (success) {
+            if (result.success) {
                 toast.success("Account created!", {
                     description: "Welcome to RentEase. Let's find your perfect home!",
                 });
                 router.push("/dashboard");
             } else {
                 toast.error("Registration failed", {
-                    description: "An account with this email may already exist.",
+                    description: result.error || "An account with this email may already exist.",
                 });
             }
         } catch {

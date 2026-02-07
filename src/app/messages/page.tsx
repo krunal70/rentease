@@ -1,20 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Header, Footer } from "@/components/layout";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-    getConversationsByUserId,
-    getMessagesByConversationId,
-    getPropertyById,
-    getUserById,
-    mockMessages,
-} from "@/data/mock";
-import { Conversation, Message } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,83 +20,177 @@ import {
     ChevronLeft,
     Paperclip,
     Smile,
+    RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
+interface Participant {
+    id: string;
+    name: string;
+    avatar?: string;
+}
+
+interface Message {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    content: string;
+    createdAt: string;
+    read: boolean;
+}
+
+interface Conversation {
+    id: string;
+    propertyId?: string;
+    property?: {
+        id: string;
+        title: string;
+        image?: string;
+    };
+    participants: Participant[];
+    lastMessage?: {
+        id: string;
+        content: string;
+        senderId: string;
+        createdAt: string;
+        read: boolean;
+    };
+    unreadCount: number;
+    createdAt: string;
+}
+
 export default function MessagesPage() {
     const router = useRouter();
-    const { user, isLoading, isAuthenticated } = useAuth();
+    const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+    const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
+    const [isLoadingConversations, setIsLoadingConversations] = useState(true);
+    const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+    const [isSending, setIsSending] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Redirect if not authenticated
     useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
+        if (!authLoading && !isAuthenticated) {
             router.push("/login");
         }
-    }, [isLoading, isAuthenticated, router]);
+    }, [authLoading, isAuthenticated, router]);
 
-    // Load conversations
-    const conversations = user ? getConversationsByUserId(user.id) : [];
+    // Load conversations from API
+    const fetchConversations = useCallback(async () => {
+        try {
+            const response = await fetch("/api/messages");
+            if (!response.ok) {
+                if (response.status === 401) return;
+                throw new Error("Failed to load conversations");
+            }
+            const data = await response.json();
+            setConversations(data.conversations || []);
+        } catch (error) {
+            console.error("Error fetching conversations:", error);
+            toast.error("Failed to load conversations");
+        } finally {
+            setIsLoadingConversations(false);
+        }
+    }, []);
 
-    // Filter conversations by search
-    const filteredConversations = conversations.filter((conv) => {
-        if (!searchQuery) return true;
-        const otherUserId = conv.participants.find((p) => p !== user?.id);
-        const otherUser = otherUserId ? getUserById(otherUserId) : null;
-        const property = conv.propertyId ? getPropertyById(conv.propertyId) : null;
-        return (
-            otherUser?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            property?.title.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    });
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchConversations();
+        }
+    }, [isAuthenticated, fetchConversations]);
 
     // Load messages when conversation is selected
+    const fetchMessages = useCallback(async (conversationId: string) => {
+        setIsLoadingMessages(true);
+        try {
+            const response = await fetch(`/api/messages/${conversationId}`);
+            if (!response.ok) {
+                throw new Error("Failed to load messages");
+            }
+            const data = await response.json();
+            setMessages(data.messages || []);
+
+            // Mark messages as read
+            await fetch(`/api/messages/${conversationId}/read`, { method: "POST" });
+        } catch (error) {
+            console.error("Error fetching messages:", error);
+            toast.error("Failed to load messages");
+        } finally {
+            setIsLoadingMessages(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (selectedConversation) {
-            const convMessages = getMessagesByConversationId(selectedConversation.id);
-            setMessages(convMessages);
+            fetchMessages(selectedConversation.id);
         }
-    }, [selectedConversation]);
+    }, [selectedConversation, fetchMessages]);
 
     // Scroll to bottom on new messages
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    const handleSendMessage = () => {
+    // Filter conversations by search
+    const filteredConversations = conversations.filter((conv) => {
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase();
+        return (
+            conv.participants.some((p) => p.name.toLowerCase().includes(query)) ||
+            conv.property?.title.toLowerCase().includes(query)
+        );
+    });
+
+    const handleSendMessage = async () => {
         if (!newMessage.trim() || !selectedConversation || !user) return;
 
-        const message: Message = {
-            id: `msg-${Date.now()}`,
-            conversationId: selectedConversation.id,
-            senderId: user.id,
-            content: newMessage.trim(),
-            createdAt: new Date(),
-            read: false,
-        };
+        setIsSending(true);
+        try {
+            const response = await fetch("/api/messages", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    conversationId: selectedConversation.id,
+                    content: newMessage.trim(),
+                }),
+            });
 
-        setMessages((prev) => [...prev, message]);
-        setNewMessage("");
-        toast.success("Message sent!");
+            if (!response.ok) {
+                throw new Error("Failed to send message");
+            }
+
+            const data = await response.json();
+            setMessages((prev) => [...prev, data.message]);
+            setNewMessage("");
+
+            // Update conversation's last message in the list
+            setConversations((prev) =>
+                prev.map((c) =>
+                    c.id === selectedConversation.id
+                        ? { ...c, lastMessage: data.message }
+                        : c
+                )
+            );
+        } catch (error) {
+            console.error("Error sending message:", error);
+            toast.error("Failed to send message");
+        } finally {
+            setIsSending(false);
+        }
     };
 
-    const getOtherParticipant = (conversation: Conversation) => {
-        const otherUserId = conversation.participants.find((p) => p !== user?.id);
-        return otherUserId ? getUserById(otherUserId) : null;
-    };
-
-    const formatTime = (date: Date) => {
+    const formatTime = (date: string) => {
         return new Date(date).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
         });
     };
 
-    const formatDate = (date: Date) => {
+    const formatDate = (date: string) => {
         const today = new Date();
         const messageDate = new Date(date);
         if (messageDate.toDateString() === today.toDateString()) {
@@ -118,7 +204,7 @@ export default function MessagesPage() {
         return messageDate.toLocaleDateString();
     };
 
-    if (isLoading) {
+    if (authLoading) {
         return (
             <div className="flex min-h-screen flex-col">
                 <Header />
@@ -139,7 +225,18 @@ export default function MessagesPage() {
 
             <main className="flex-1 bg-muted/30">
                 <div className="container py-8 px-4">
-                    <h1 className="text-3xl font-bold mb-6">Messages</h1>
+                    <div className="flex items-center justify-between mb-6">
+                        <h1 className="text-3xl font-bold">Messages</h1>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={fetchConversations}
+                            disabled={isLoadingConversations}
+                        >
+                            <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingConversations ? "animate-spin" : ""}`} />
+                            Refresh
+                        </Button>
+                    </div>
 
                     <Card className="h-[600px] flex overflow-hidden">
                         {/* Conversations List */}
@@ -160,7 +257,19 @@ export default function MessagesPage() {
                             </div>
 
                             <div className="flex-1 overflow-y-auto">
-                                {filteredConversations.length === 0 ? (
+                                {isLoadingConversations ? (
+                                    <div className="p-4 space-y-4">
+                                        {[1, 2, 3].map((i) => (
+                                            <div key={i} className="flex items-start gap-3">
+                                                <Skeleton className="h-12 w-12 rounded-full" />
+                                                <div className="flex-1">
+                                                    <Skeleton className="h-4 w-24 mb-2" />
+                                                    <Skeleton className="h-3 w-full" />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : filteredConversations.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center h-full text-center p-4">
                                         <MessageSquare className="h-12 w-12 text-muted-foreground mb-3" />
                                         <p className="text-muted-foreground">No conversations yet</p>
@@ -170,13 +279,9 @@ export default function MessagesPage() {
                                     </div>
                                 ) : (
                                     filteredConversations.map((conv) => {
-                                        const otherUser = getOtherParticipant(conv);
-                                        const property = conv.propertyId
-                                            ? getPropertyById(conv.propertyId)
-                                            : null;
+                                        const otherParticipant = conv.participants[0];
                                         const isSelected = selectedConversation?.id === conv.id;
-                                        const hasUnread =
-                                            conv.lastMessage && !conv.lastMessage.read && conv.lastMessage.senderId !== user.id;
+                                        const hasUnread = conv.unreadCount > 0;
 
                                         return (
                                             <button
@@ -186,18 +291,18 @@ export default function MessagesPage() {
                                                     }`}
                                             >
                                                 <Avatar className="h-12 w-12">
-                                                    <AvatarImage src={otherUser?.avatar} />
+                                                    <AvatarImage src={otherParticipant?.avatar} />
                                                     <AvatarFallback>
-                                                        {otherUser?.name
-                                                            .split(" ")
+                                                        {otherParticipant?.name
+                                                            ?.split(" ")
                                                             .map((n) => n[0])
-                                                            .join("")}
+                                                            .join("") || "?"}
                                                     </AvatarFallback>
                                                 </Avatar>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between">
                                                         <p className="font-medium truncate">
-                                                            {otherUser?.name}
+                                                            {otherParticipant?.name || "Unknown"}
                                                         </p>
                                                         {conv.lastMessage && (
                                                             <span className="text-xs text-muted-foreground">
@@ -205,9 +310,9 @@ export default function MessagesPage() {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    {property && (
+                                                    {conv.property && (
                                                         <p className="text-xs text-primary truncate">
-                                                            {property.title}
+                                                            {conv.property.title}
                                                         </p>
                                                     )}
                                                     {conv.lastMessage && (
@@ -222,7 +327,9 @@ export default function MessagesPage() {
                                                     )}
                                                 </div>
                                                 {hasUnread && (
-                                                    <div className="h-2 w-2 rounded-full bg-primary shrink-0 mt-2" />
+                                                    <Badge variant="default" className="shrink-0">
+                                                        {conv.unreadCount}
+                                                    </Badge>
                                                 )}
                                             </button>
                                         );
@@ -251,27 +358,24 @@ export default function MessagesPage() {
                                             </Button>
                                             <Avatar>
                                                 <AvatarImage
-                                                    src={getOtherParticipant(selectedConversation)?.avatar}
+                                                    src={selectedConversation.participants[0]?.avatar}
                                                 />
                                                 <AvatarFallback>
-                                                    {getOtherParticipant(selectedConversation)
-                                                        ?.name.split(" ")
+                                                    {selectedConversation.participants[0]?.name
+                                                        ?.split(" ")
                                                         .map((n) => n[0])
-                                                        .join("")}
+                                                        .join("") || "?"}
                                                 </AvatarFallback>
                                             </Avatar>
                                             <div>
                                                 <p className="font-medium">
-                                                    {getOtherParticipant(selectedConversation)?.name}
+                                                    {selectedConversation.participants[0]?.name || "Unknown"}
                                                 </p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {selectedConversation.propertyId && (
-                                                        <>
-                                                            Re:{" "}
-                                                            {getPropertyById(selectedConversation.propertyId)?.title}
-                                                        </>
-                                                    )}
-                                                </p>
+                                                {selectedConversation.property && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Re: {selectedConversation.property.title}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-1">
@@ -289,46 +393,60 @@ export default function MessagesPage() {
 
                                     {/* Messages */}
                                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                        {messages.map((message, index) => {
-                                            const isOwn = message.senderId === user.id;
-                                            const showDate =
-                                                index === 0 ||
-                                                formatDate(message.createdAt) !==
-                                                formatDate(messages[index - 1].createdAt);
+                                        {isLoadingMessages ? (
+                                            <div className="flex justify-center py-8">
+                                                <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                                            </div>
+                                        ) : messages.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center h-full text-center">
+                                                <MessageSquare className="h-8 w-8 text-muted-foreground mb-2" />
+                                                <p className="text-muted-foreground">No messages yet</p>
+                                                <p className="text-sm text-muted-foreground">
+                                                    Send a message to start the conversation
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            messages.map((message, index) => {
+                                                const isOwn = message.senderId === user.id;
+                                                const showDate =
+                                                    index === 0 ||
+                                                    formatDate(message.createdAt) !==
+                                                    formatDate(messages[index - 1].createdAt);
 
-                                            return (
-                                                <div key={message.id}>
-                                                    {showDate && (
-                                                        <div className="flex justify-center my-4">
-                                                            <Badge variant="secondary" className="text-xs">
-                                                                {formatDate(message.createdAt)}
-                                                            </Badge>
-                                                        </div>
-                                                    )}
-                                                    <div
-                                                        className={`flex ${isOwn ? "justify-end" : "justify-start"
-                                                            }`}
-                                                    >
+                                                return (
+                                                    <div key={message.id}>
+                                                        {showDate && (
+                                                            <div className="flex justify-center my-4">
+                                                                <Badge variant="secondary" className="text-xs">
+                                                                    {formatDate(message.createdAt)}
+                                                                </Badge>
+                                                            </div>
+                                                        )}
                                                         <div
-                                                            className={`max-w-[70%] px-4 py-2 rounded-2xl ${isOwn
-                                                                    ? "bg-primary text-primary-foreground rounded-br-md"
-                                                                    : "bg-muted rounded-bl-md"
+                                                            className={`flex ${isOwn ? "justify-end" : "justify-start"
                                                                 }`}
                                                         >
-                                                            <p className="text-sm">{message.content}</p>
-                                                            <p
-                                                                className={`text-xs mt-1 ${isOwn
-                                                                        ? "text-primary-foreground/70"
-                                                                        : "text-muted-foreground"
+                                                            <div
+                                                                className={`max-w-[70%] px-4 py-2 rounded-2xl ${isOwn
+                                                                        ? "bg-primary text-primary-foreground rounded-br-md"
+                                                                        : "bg-muted rounded-bl-md"
                                                                     }`}
                                                             >
-                                                                {formatTime(message.createdAt)}
-                                                            </p>
+                                                                <p className="text-sm">{message.content}</p>
+                                                                <p
+                                                                    className={`text-xs mt-1 ${isOwn
+                                                                            ? "text-primary-foreground/70"
+                                                                            : "text-muted-foreground"
+                                                                        }`}
+                                                                >
+                                                                    {formatTime(message.createdAt)}
+                                                                </p>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })
+                                        )}
                                         <div ref={messagesEndRef} />
                                     </div>
 
@@ -349,6 +467,7 @@ export default function MessagesPage() {
                                                     }
                                                 }}
                                                 className="flex-1"
+                                                disabled={isSending}
                                             />
                                             <Button variant="ghost" size="icon">
                                                 <Smile className="h-4 w-4" />
@@ -356,7 +475,7 @@ export default function MessagesPage() {
                                             <Button
                                                 size="icon"
                                                 onClick={handleSendMessage}
-                                                disabled={!newMessage.trim()}
+                                                disabled={!newMessage.trim() || isSending}
                                             >
                                                 <Send className="h-4 w-4" />
                                             </Button>

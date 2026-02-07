@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Header, Footer } from "@/components/layout";
 import { useAuth } from "@/contexts/AuthContext";
-import { getPropertyById, getUserById } from "@/data/mock";
+import { useProperty } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +36,7 @@ import {
     MessageSquare,
     Check,
     Star,
+    Edit2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,21 +44,45 @@ export default function PropertyDetailPage() {
     const params = useParams();
     const router = useRouter();
     const { user, isAuthenticated } = useAuth();
+    const { property, isLoading, error } = useProperty(params.id as string);
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [isFavorite, setIsFavorite] = useState(false);
     const [showContactDialog, setShowContactDialog] = useState(false);
 
-    const property = getPropertyById(params.id as string);
-    const owner = property ? getUserById(property.ownerId) : null;
+    // Cast property to any to access owner details which are not in the base type yet
+    // In a real app we'd update the Property type definition
+    const owner = property ? property.owner : null;
 
-    if (!property) {
+    if (isLoading) {
+        return (
+            <div className="flex min-h-screen flex-col">
+                <Header />
+                <main className="flex-1 container py-16">
+                    <div className="grid gap-8 lg:grid-cols-3">
+                        <div className="lg:col-span-2 space-y-6">
+                            <Skeleton className="h-[400px] w-full rounded-lg" />
+                            <Skeleton className="h-40 w-full rounded-lg" />
+                            <Skeleton className="h-40 w-full rounded-lg" />
+                        </div>
+                        <div className="space-y-6">
+                            <Skeleton className="h-60 w-full rounded-lg" />
+                            <Skeleton className="h-40 w-full rounded-lg" />
+                        </div>
+                    </div>
+                </main>
+                <Footer />
+            </div>
+        );
+    }
+
+    if (error || !property) {
         return (
             <div className="flex min-h-screen flex-col">
                 <Header />
                 <main className="flex-1 container py-16 text-center">
                     <h1 className="text-2xl font-bold">Property not found</h1>
                     <p className="text-muted-foreground mt-2">
-                        The property you're looking for doesn't exist.
+                        {error || "The property you're looking for doesn't exist."}
                     </p>
                     <Link href="/properties">
                         <Button className="mt-4">Browse Properties</Button>
@@ -143,7 +168,7 @@ export default function PropertyDetailPage() {
                             <Card className="overflow-hidden">
                                 <div className="relative aspect-[16/10]">
                                     <img
-                                        src={property.images[currentImageIndex]}
+                                        src={property.images[currentImageIndex] || "/placeholder-property.jpg"}
                                         alt={`${property.title} - Image ${currentImageIndex + 1}`}
                                         className="h-full w-full object-cover"
                                     />
@@ -174,6 +199,18 @@ export default function PropertyDetailPage() {
                                     </div>
                                     {/* Action Buttons */}
                                     <div className="absolute top-4 right-4 flex gap-2">
+                                        {/* Edit Button for Owners */}
+                                        {user && property.ownerId === user.id && (
+                                            <Link href={`/properties/${property.id}/edit`}>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="bg-white/80 hover:bg-white rounded-full"
+                                                >
+                                                    <Edit2 className="h-5 w-5" />
+                                                </Button>
+                                            </Link>
+                                        )}
                                         <Button
                                             variant="ghost"
                                             size="icon"
@@ -203,8 +240,8 @@ export default function PropertyDetailPage() {
                                                 key={idx}
                                                 onClick={() => setCurrentImageIndex(idx)}
                                                 className={`shrink-0 w-20 h-16 rounded-lg overflow-hidden border-2 transition-colors ${idx === currentImageIndex
-                                                        ? "border-primary"
-                                                        : "border-transparent hover:border-muted-foreground/50"
+                                                    ? "border-primary"
+                                                    : "border-transparent hover:border-muted-foreground/50"
                                                     }`}
                                             >
                                                 <img
@@ -369,14 +406,14 @@ export default function PropertyDetailPage() {
                                                 <AvatarFallback>
                                                     {owner.name
                                                         .split(" ")
-                                                        .map((n) => n[0])
+                                                        .map((n: string) => n[0])
                                                         .join("")}
                                                 </AvatarFallback>
                                             </Avatar>
                                             <div>
                                                 <p className="font-medium">{owner.name}</p>
                                                 <p className="text-sm text-muted-foreground capitalize">
-                                                    {owner.role.replace("_", " ")}
+                                                    Landlord
                                                 </p>
                                             </div>
                                         </div>

@@ -13,7 +13,6 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Slider } from "@/components/ui/slider";
 import { Search, X, SlidersHorizontal } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
@@ -63,7 +62,7 @@ export function SearchFilters({
     const hasActiveFilters =
         Object.values(filters).some((v) => v !== undefined) || searchQuery;
 
-    const FilterContent = () => (
+    const filterContent = (
         <div className="space-y-6">
             {/* Price Range */}
             <div className="space-y-4">
@@ -244,7 +243,7 @@ export function SearchFilters({
                             <SheetTitle>Filters</SheetTitle>
                         </SheetHeader>
                         <div className="mt-6">
-                            <FilterContent />
+                            {filterContent}
                         </div>
                     </SheetContent>
                 </Sheet>
@@ -268,7 +267,7 @@ export function SearchFilters({
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <FilterContent />
+                    {filterContent}
                 </CardContent>
             </Card>
         </>

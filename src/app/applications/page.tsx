@@ -5,11 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Header, Footer } from "@/components/layout";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-    getApplicationsByApplicantId,
-    getPropertyById,
-    mockApplications,
-} from "@/data/mock";
+import { useApplications } from "@/hooks";
 import { Application } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,15 +49,16 @@ const statusConfig = {
 
 export default function ApplicationsPage() {
     const router = useRouter();
-    const { user, isLoading, isAuthenticated } = useAuth();
+    const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+    const { applications, isLoading: appsLoading, error } = useApplications();
 
     useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
+        if (!authLoading && !isAuthenticated) {
             router.push("/login");
         }
-    }, [isLoading, isAuthenticated, router]);
+    }, [authLoading, isAuthenticated, router]);
 
-    if (isLoading) {
+    if (authLoading || appsLoading) {
         return (
             <div className="flex min-h-screen flex-col">
                 <Header />
@@ -80,12 +77,6 @@ export default function ApplicationsPage() {
         return null;
     }
 
-    // Get applications based on role
-    const applications =
-        user.role === "tenant"
-            ? getApplicationsByApplicantId(user.id)
-            : mockApplications; // Landlords/managers see all applications
-
     const pendingApps = applications.filter(
         (a) => a.status === "pending" || a.status === "under_review"
     );
@@ -93,8 +84,8 @@ export default function ApplicationsPage() {
     const rejectedApps = applications.filter((a) => a.status === "rejected");
 
     const ApplicationCard = ({ application }: { application: Application }) => {
-        const property = getPropertyById(application.propertyId);
-        const status = statusConfig[application.status];
+        const property = application.property || {};
+        const status = statusConfig[application.status as keyof typeof statusConfig] || statusConfig.pending;
         const StatusIcon = status.icon;
 
         return (
@@ -102,25 +93,30 @@ export default function ApplicationsPage() {
                 <Card className="hover:shadow-md transition-shadow cursor-pointer">
                     <CardContent className="p-6">
                         <div className="flex items-start gap-4">
-                            {property && (
+                            {property.image && (
                                 <img
-                                    src={property.images[0]}
-                                    alt={property.title}
+                                    src={property.image}
+                                    alt={property.title || "Property"}
                                     className="w-24 h-24 rounded-lg object-cover shrink-0"
                                 />
                             )}
+                            {/* Fallback if no image */}
+                            {!property.image && (
+                                <div className="w-24 h-24 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                                    <Building className="h-8 w-8 text-muted-foreground" />
+                                </div>
+                            )}
+
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
                                         <h3 className="font-semibold truncate">
-                                            {property?.title || "Property"}
+                                            {property.title || "Unknown Property"}
                                         </h3>
-                                        {property && (
-                                            <div className="flex items-center text-sm text-muted-foreground mt-1">
-                                                <MapPin className="h-3 w-3 mr-1" />
-                                                {property.address.city}, {property.address.state}
-                                            </div>
-                                        )}
+                                        <div className="flex items-center text-sm text-muted-foreground mt-1">
+                                            <MapPin className="h-3 w-3 mr-1" />
+                                            {property.city}, {property.state}
+                                        </div>
                                     </div>
                                     <Badge className={status.color}>
                                         <StatusIcon className="h-3 w-3 mr-1" />
@@ -133,19 +129,19 @@ export default function ApplicationsPage() {
                                         <Calendar className="h-4 w-4 mr-1" />
                                         {new Date(application.submittedAt).toLocaleDateString()}
                                     </span>
-                                    {property && (
+                                    {property.price && (
                                         <span className="flex items-center font-medium text-primary">
                                             ${property.price.toLocaleString()}/mo
                                         </span>
                                     )}
                                 </div>
 
-                                {user.role !== "tenant" && (
+                                {user.role !== "tenant" && application.applicant && (
                                     <div className="mt-2 pt-2 border-t">
                                         <p className="text-sm">
                                             <span className="text-muted-foreground">Applicant: </span>
                                             <span className="font-medium">
-                                                {application.personalInfo.fullName}
+                                                {application.applicant.name}
                                             </span>
                                         </p>
                                     </div>

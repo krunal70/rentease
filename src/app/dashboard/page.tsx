@@ -9,12 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import {
-    mockProperties,
-    mockApplications,
-    mockConversations,
-    getApplicationsByApplicantId,
-} from "@/data/mock";
+import { useProperties, useApplications } from "@/hooks";
 import {
     Building,
     MessageSquare,
@@ -32,13 +27,19 @@ import {
 
 export default function DashboardPage() {
     const router = useRouter();
-    const { user, isLoading, isAuthenticated } = useAuth();
+    const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+
+    // Fetch data from API - hooks must be called unconditionally
+    const { properties, isLoading: propertiesLoading } = useProperties();
+    const { applications, isLoading: applicationsLoading } = useApplications();
+
+    const isLoading = authLoading || propertiesLoading || applicationsLoading;
 
     useEffect(() => {
-        if (!isLoading && !isAuthenticated) {
+        if (!authLoading && !isAuthenticated) {
             router.push("/login");
         }
-    }, [isLoading, isAuthenticated, router]);
+    }, [authLoading, isAuthenticated, router]);
 
     if (isLoading) {
         return (
@@ -62,16 +63,15 @@ export default function DashboardPage() {
         return null;
     }
 
-    // Get user-specific data
-    const userApplications =
-        user.role === "tenant" ? getApplicationsByApplicantId(user.id) : mockApplications;
-    const userProperties =
-        user.role === "landlord" || user.role === "property_manager"
-            ? mockProperties.filter((p) => p.ownerId === user.id || user.role === "property_manager")
-            : [];
-    const unreadMessages = mockConversations.filter(
-        (c) => c.lastMessage && !c.lastMessage.read && c.participants.includes(user.id)
-    ).length;
+    // Derive user-specific data from API responses
+    const userApplications = applications || [];
+    const userProperties = user.role === "landlord" || user.role === "property_manager"
+        ? properties.filter((p) => p.ownerId === user.id || user.role === "property_manager")
+        : [];
+    const recommendedProperties = user.role === "tenant" ? properties.slice(0, 3) : [];
+
+    // Placeholder for unread messages - would need a messages API
+    const unreadMessages = 0;
 
     // Stats based on role
     const tenantStats = [
@@ -83,8 +83,8 @@ export default function DashboardPage() {
             bgColor: "bg-blue-100",
         },
         {
-            title: "Saved Properties",
-            value: 5,
+            title: "Available Properties",
+            value: properties.length,
             icon: Home,
             color: "text-purple-600",
             bgColor: "bg-purple-100",
@@ -97,8 +97,8 @@ export default function DashboardPage() {
             bgColor: "bg-green-100",
         },
         {
-            title: "Property Views",
-            value: 24,
+            title: "Your Applications",
+            value: userApplications.length,
             icon: TrendingUp,
             color: "text-orange-600",
             bgColor: "bg-orange-100",
@@ -122,14 +122,14 @@ export default function DashboardPage() {
         },
         {
             title: "Applications",
-            value: mockApplications.length,
+            value: applications.length,
             icon: FileText,
             color: "text-purple-600",
             bgColor: "bg-purple-100",
         },
         {
             title: "Active Tenants",
-            value: 3,
+            value: 0,
             icon: Users,
             color: "text-orange-600",
             bgColor: "bg-orange-100",
@@ -269,7 +269,7 @@ export default function DashboardPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
-                                        {(user.role === "tenant" ? mockProperties.slice(0, 3) : userProperties.slice(0, 3)).map(
+                                        {(user.role === "tenant" ? recommendedProperties : userProperties.slice(0, 3)).map(
                                             (property) => (
                                                 <Link key={property.id} href={`/properties/${property.id}`}>
                                                     <div className="flex gap-4 p-3 rounded-lg hover:bg-muted transition-colors cursor-pointer">

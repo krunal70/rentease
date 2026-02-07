@@ -26,15 +26,15 @@ export default function LoginPage() {
         setIsLoading(true);
 
         try {
-            const success = await login(formData.email, formData.password);
-            if (success) {
+            const result = await login(formData.email, formData.password);
+            if (result.success) {
                 toast.success("Welcome back!", {
                     description: "You have been logged in successfully.",
                 });
                 router.push("/dashboard");
             } else {
                 toast.error("Login failed", {
-                    description: "Please check your credentials and try again.",
+                    description: result.error || "Please check your credentials and try again.",
                 });
             }
         } catch {
@@ -85,7 +85,7 @@ export default function LoginPage() {
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="password">Password</Label>
                                 <Link
-                                    href="#"
+                                    href="/forgot-password"
                                     className="text-sm text-primary hover:underline"
                                 >
                                     Forgot password?

@@ -3,63 +3,32 @@
 import { useState, useMemo } from "react";
 import { Header, Footer } from "@/components/layout";
 import { PropertyCard, SearchFilters } from "@/components/properties";
-import { mockProperties } from "@/data/mock";
+import { useProperties } from "@/hooks";
 import { PropertyFilters, Property } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Building } from "lucide-react";
+import { Building, AlertCircle } from "lucide-react";
 
 export default function PropertiesPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [filters, setFilters] = useState<PropertyFilters>({});
-    const [isLoading, setIsLoading] = useState(false);
 
-    // Filter properties based on search and filters
+    // Fetch properties from API with filters
+    const { properties, isLoading, error } = useProperties(filters);
+
+    // Client-side search filtering (API handles price/beds/baths/type filters)
     const filteredProperties = useMemo(() => {
-        let results = [...mockProperties];
+        if (!searchQuery) return properties;
 
-        // Search query
-        if (searchQuery) {
-            const query = searchQuery.toLowerCase();
-            results = results.filter(
-                (p) =>
-                    p.title.toLowerCase().includes(query) ||
-                    p.description.toLowerCase().includes(query) ||
-                    p.address.city.toLowerCase().includes(query) ||
-                    p.address.state.toLowerCase().includes(query) ||
-                    p.address.street.toLowerCase().includes(query)
-            );
-        }
-
-        // Price filter
-        if (filters.minPrice !== undefined) {
-            results = results.filter((p) => p.price >= filters.minPrice!);
-        }
-        if (filters.maxPrice !== undefined) {
-            results = results.filter((p) => p.price <= filters.maxPrice!);
-        }
-
-        // Bedrooms filter
-        if (filters.bedrooms !== undefined) {
-            results = results.filter((p) => p.bedrooms >= filters.bedrooms!);
-        }
-
-        // Bathrooms filter
-        if (filters.bathrooms !== undefined) {
-            results = results.filter((p) => p.bathrooms >= filters.bathrooms!);
-        }
-
-        // Property type filter
-        if (filters.propertyType && filters.propertyType.length > 0) {
-            results = results.filter((p) => filters.propertyType!.includes(p.propertyType));
-        }
-
-        // Pet policy filter
-        if (filters.petPolicy) {
-            results = results.filter((p) => p.petPolicy === filters.petPolicy);
-        }
-
-        return results;
-    }, [searchQuery, filters]);
+        const query = searchQuery.toLowerCase();
+        return properties.filter(
+            (p) =>
+                p.title.toLowerCase().includes(query) ||
+                p.description.toLowerCase().includes(query) ||
+                p.address.city.toLowerCase().includes(query) ||
+                p.address.state.toLowerCase().includes(query) ||
+                p.address.street.toLowerCase().includes(query)
+        );
+    }, [searchQuery, properties]);
 
     return (
         <div className="flex min-h-screen flex-col">

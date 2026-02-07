@@ -114,7 +114,7 @@ export default function HomePage() {
                     <Button
                       size="lg"
                       variant="outline"
-                      className="w-full sm:w-auto border-white text-white hover:bg-white/10"
+                      className="w-full sm:w-auto bg-white text-blue-600 hover:bg-blue-50 2xl:text-lg 2xl:px-8 2xl:py-6"
                     >
                       Get Started Free
                     </Button>
@@ -285,7 +285,7 @@ export default function HomePage() {
                       <Button
                         size="lg"
                         variant="outline"
-                        className="w-full sm:w-auto border-white text-white hover:bg-white/10"
+                        className="w-full sm:w-auto bg-white text-blue-600 hover:bg-blue-50"
                       >
                         Browse Properties
                       </Button>

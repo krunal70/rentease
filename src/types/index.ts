@@ -43,6 +43,12 @@ export interface Property {
     ownerId: string;
     status: PropertyStatus;
     createdAt: Date;
+    owner?: {
+        name: string;
+        email: string;
+        phone?: string;
+        avatar?: string;
+    } | null;
 }
 
 // Application Types
@@ -80,6 +86,12 @@ export interface Application {
     rentalHistory: RentalHistory;
     documents: string[];
     submittedAt: Date;
+    property?: any; // Using any to avoid circular dependency issues or complex type mapping for now
+    applicant?: {
+        name: string;
+        email: string;
+        avatar?: string;
+    };
 }
 
 // Message Types
